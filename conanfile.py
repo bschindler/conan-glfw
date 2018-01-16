@@ -11,12 +11,13 @@ class GlfwConan(ConanFile):
     sources_folder = "sources"
     generators = "cmake"
     settings = "os", "arch", "build_type", "compiler"
-    options = {"shared": [True, False]}
-    default_options = "shared=False"
+    options = {"shared": [True, False], 
+            "fPIC" : [True, False], 
+            "include_pdbs": [True, False] 
+    }
+    default_options = "shared=False", "fPIC=False", "include_pdbs=False"
     url = "https://github.com/bincrafters/conan-glfw"
     license = "https://github.com/glfw/glfw/blob/master/LICENSE.md"
-    exports = "FindGLFW.cmake"
-    exports_sources = "CMakeLists.txt"
 
     def system_requirements(self):
         if os_info.is_linux:
@@ -60,14 +61,23 @@ class GlfwConan(ConanFile):
                 installer.install("%s%s" % ("libXi-devel", arch_suffix))
             else:
                 self.output.warn("Could not determine package manager, skipping Linux system requirements installation.")
-   
-    def configure(self):
-        del self.settings.compiler.libcxx
+
+    def config_options(self):
+        if self.settings.compiler == "Visual Studio":
+            self.options.remove("fPIC")
+            self.settings.remove("build_type")
+            self.settings.compiler["Visual Studio"].remove("runtime")
+        else:
+            try:  # It might have already been removed if required by more than 1 package
+                del self.options.include_pdbs
+            except:
+                pass
 
     def source(self):
-        download("https://github.com/glfw/glfw/archive/%s.zip" % self.version, "%s.zip" % self.sources_folder)
-        unzip("%s.zip" % self.sources_folder)
-        os.unlink("%s.zip" % self.sources_folder)
+        zip_file = "%s.zip" % self.version
+        download("https://github.com/glfw/glfw/archive/%s" % zip_file, zip_file)
+        unzip(zip_file)
+        os.unlink(zip_file)
         os.rename("%s-%s" % (self.name, self.version), self.sources_folder)
 
     def build(self):
@@ -76,8 +86,20 @@ class GlfwConan(ConanFile):
         cmake.definitions["GLFW_BUILD_EXAMPLES"] = False
         cmake.definitions["GLFW_BUILD_TESTS"] = False
         cmake.definitions["GLFW_BUILD_DOCS"] = False
-        cmake.configure()
-        cmake.build()
+
+        cmake.configure(source_folder=self.sources_folder)
+
+        if self.settings.os == "Windows":
+            defs["CMAKE_DEBUG_POSTFIX"] = "d"
+
+        if self.settings.os != "Windows" and self.options.fPIC:
+            defs["CMAKE_POSITION_INDEPENDENT_CODE:BOOL"] = "on"
+
+        if cmake.is_multi_configuration:
+            self.run("cmake --build . --config Debug")
+            self.run("cmake --build . --config Release")
+        else:
+            cmake.build()
 
         if self.settings.os == "Macos" and self.options.shared:
             with tools.chdir(os.path.join('sources', 'src')):
@@ -85,9 +107,8 @@ class GlfwConan(ConanFile):
                     self.run('install_name_tool -id {filename} {filename}'.format(filename=filename))
 
     def package(self):
-        self.copy("FindGLFW.cmake", ".", ".")
         self.copy("%s/copying*" % self.sources_folder, dst="licenses",  ignore_case=True, keep_path=False)
-        
+
         self.copy(pattern="*.h", dst="include", src="%s/include" % self.sources_folder, keep_path=True)
 
         if self.settings.compiler == "Visual Studio":
@@ -110,9 +131,11 @@ class GlfwConan(ConanFile):
     def package_info(self):
         if self.settings.os == "Windows":
             if self.options.shared:
-                self.cpp_info.libs = ['glfw3dll']
+                self.cpp_info.release.libs = ['glfw3dll']
+                self.cpp_info.debug.libs = ['glfw3dlld']
             else:
-                self.cpp_info.libs = ['glfw3']
+                self.cpp_info.release.libs = ['glfw3']
+                self.cpp_info.debug.libs = ['glfw3d']
         else:
             if self.options.shared:
                 self.cpp_info.libs = ['glfw']
