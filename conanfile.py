@@ -87,13 +87,13 @@ class GlfwConan(ConanFile):
         cmake.definitions["GLFW_BUILD_TESTS"] = False
         cmake.definitions["GLFW_BUILD_DOCS"] = False
 
-        cmake.configure(source_folder=self.sources_folder)
-
         if self.settings.os == "Windows":
-            defs["CMAKE_DEBUG_POSTFIX"] = "d"
+            cmake.definitions["CMAKE_DEBUG_POSTFIX"] = "d"
 
         if self.settings.os != "Windows" and self.options.fPIC:
-            defs["CMAKE_POSITION_INDEPENDENT_CODE:BOOL"] = "on"
+            cmake.definitions["CMAKE_POSITION_INDEPENDENT_CODE:BOOL"] = "on"
+
+        cmake.configure(source_folder=self.sources_folder)
 
         if cmake.is_multi_configuration:
             self.run("cmake --build . --config Debug")
